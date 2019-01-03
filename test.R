@@ -40,15 +40,15 @@ norm <- as.data.frame(apply(tabla, 2, function(tabla) (tabla - min(tabla))/(max(
 
 summary(norm)
 
-#--------------- BoxPlot ---------------------------------------
+# BoxPlot ---------------------------------------
 #install.packages("mlbench")
 #library("mlbench")
 
-# outliers ------------
+# outliers
 
 boxplot(norm)
 
-# varlores atípicos superiores ----------------------------
+# varlores atípicos superiores
 listasup <- c() # esta lista contiene todos los outliers superiores, para despues contarlos
 
 listasup <- c(listasup, which(norm$X4 > 0.8))
@@ -105,7 +105,7 @@ t1 <- table(listasup)
 t1
 # el mejor candidato a eliminar se repite en 6 columnas (35)
 
-# valores atípicos inferiores ------------------------------
+# valores atípicos inferiores
 listainf <- c()
 
 listainf<- c(listainf, which(norm$X4 < 0.4))
@@ -179,7 +179,8 @@ cor1
 # la mayor correlación es de 0.7478159 (X14 con X21)
 
 
-# LOF algorithm
+# LOF algorithm ----------------------------
+# https://rpubs.com/maulikpatel/228336
 
 library(DMwR)
 install.packages("DMwR")
@@ -206,7 +207,7 @@ boxplot(newnorm1, main = "my boxplot")
 boxplot(newnorm2, main = "LOF")
 
 
-# Algoritmo de Boruta
+# Algoritmo de Boruta ---------------------------
 
 library(Boruta)
 # install.packages("Boruta")
@@ -264,7 +265,7 @@ boruta.final2$finalDecision
 
 
 
-# MLR usando todos los atributos
+# MLR usando todos los atributos --------------------------------
 lm.y <- lm(Y ~ . , data = norm[,1:49])
 summary(lm.y)
 # Residuals:
@@ -273,14 +274,14 @@ summary(lm.y)
 
 
 
-# MLR quitando outliers (1)
+# MLR quitando outliers (1) -----------------------------
 lm.y1 <- lm(Y ~ . , data = newnorm1[, 1:49])
 summary(lm.y1)
 # Residuals:
 #   ALL 40 residuals are 0: no residual degrees of freedom!
 #   Coefficients: (9 not defined because of singularities)
 
-# MLR quitando outliers (2)
+# MLR quitando outliers (2) ---------------------------
 lm.y2 <- lm(Y ~ . , data = newnorm2[, 1:49])
 summary(lm.y2)
 # Residuals:
@@ -290,7 +291,7 @@ summary(lm.y2)
 # no funciona?
 
 
-# MLR usando los atributos considerados importantes por Boruta (10 cols)
+# MLR usando los atributos considerados importantes por Boruta (10 cols) -------------
 tabla1 <- newnorm1[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X46", "X47", "X48")]
 lm.y3 <- lm(Y ~ ., data = tabla1[,])
 summary(lm.y3)
@@ -302,7 +303,7 @@ summary(lm.y3)
 # F-statistic: 4.812 on 10 and 29 DF,  p-value: 0.0004255
 
 
-# MLR usando los atributos considerados importantes por Boruta (13 cols)
+# MLR usando los atributos considerados importantes por Boruta (13 cols) ------------------------
 tabla2 <- newnorm2[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X37", "X38", "X42", "X46", "X47", "X48")]
 lm.y4 <- lm(Y ~., data = tabla2[,])
 summary(lm.y4)
@@ -314,16 +315,60 @@ summary(lm.y4)
 # F-statistic: 3.302 on 13 and 26 DF,  p-value: 0.004608
 
 # si nos fijamos en los R^2 podemos notar que el modelo no está muy bien ajustado a los datos
-# sin embargo, pareciera que el mejor modelo es el de 10 columnas (49%)
+# sin embargo, pareciera que el mejor modelo es el de 10 columnas (49.4%)
 
 
-# Backward elimination
+# Backward elimination -----------------------------------
 # analizamos el modelo para eliminar columnas que no aportan a la predicción
 anova(lm.y3)
 # X33 sum sq: 0.0068 es el menor de todos
 
 lm2.y3 <- update(lm.y3, . ~ . - X33)
 summary(lm2.y3)
+# vemos que el modelo se ajustó a 50.4%)
+
+# aplicamos de nuevo para que R continúe el análisis
+final.lm <- step(lm.y3)
+
+summary(final.lm)
+# Residuals:
+#     Min       1Q   Median       3Q      Max 
+#-0.45820 -0.12326  0.03564  0.11240  0.27310 
+# Residual standard error: 0.1845 on 34 degrees of freedom
+# Multiple R-squared:  0.6059,	Adjusted R-squared:  0.548 
+# F-statistic: 10.46 on 5 and 34 DF,  p-value: 3.887e-06
+
+#finalmente podemos ver que el modelo se ajustó hasta 55% aprox
+#usando las columnas X7, X33, X46, X47, X48
+
+
+predY <- predict(final.lm, tabla1 <- newnorm1[,c("Y", "X7", "X33", "X46", "X47", "X48")])
+
+
+# install.packages("hydroGOF")
+library(hydroGOF)
+
+RMSE = rmse(predY, tabla1$Y)
+RMSE
+# [1] 0.1700546
+
+
+# Support Vector Regression----------------------------------------------------------------
+# https://www.kdnuggets.com/2017/03/building-regression-models-support-vector-regression.html
+
+install.packages("e1071")
+library(e1071)
+
+# probaremos la regresión con 3 casos 
+  # (1) datos sin eliminación de outliers (49cols, 42obs)
+  # (2) datos luego de aplicar boruta para la regresión lineal (11cols, 40obs)
+  # (3) datos luego de aplicar backward elimination (6cols, 40obs)
+
+#(1)
+svm1 <- svm(Y~., norm)
+svm1
+predictYsvm1 <- predict(svm1,norm)
+predictYsvm1
 
 
 
