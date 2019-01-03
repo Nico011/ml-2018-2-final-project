@@ -16,10 +16,6 @@ tabla <- na.omit(tabla)
 
 #str(tabla)
 
-# desordenamos el dataset (esto lo haremos despues de eliminar outliers)
-# desordenado<-sample(1:42,size = 42, replace = FALSE)
-# datosdesorden <- tabla[desordenado,]
-
 # y<-tabla[,1]
 # x<-tabla[,-c(1)]
 # dim(x)
@@ -263,6 +259,11 @@ boruta.final2$finalDecision
 # estos son: X1, X7, X10, X19, X27, X31, X33, X37, X38, X42, X46, X47, X48
 # usando el método de eliminación de outliers con LOF y boruta
 
+# Desordenar los datasets ---------------------------------------
+norm <- norm[sample(nrow(norm), replace = FALSE),]
+newnorm1 <- newnorm1[sample(nrow(newnorm1), replace = FALSE),]
+newnorm2 <- newnorm2[sample(nrow(newnorm2), replace = FALSE),]
+
 
 
 # MLR usando todos los atributos --------------------------------
@@ -321,13 +322,13 @@ summary(lm.y4)
 # Backward elimination -----------------------------------
 # analizamos el modelo para eliminar columnas que no aportan a la predicción
 anova(lm.y3)
-# X33 sum sq: 0.0068 es el menor de todos
+# X31 sum sq: 0.00174 es el menor de todos
 
-lm2.y3 <- update(lm.y3, . ~ . - X33)
+lm2.y3 <- update(lm.y3, . ~ . - X31)
 summary(lm2.y3)
-# vemos que el modelo se ajustó a 50.4%)
+# vemos que el modelo se ajustó a 50.9%)
 
-# aplicamos de nuevo para que R continúe el análisis
+# aplicamos el comando step() para que R continúe el análisis
 final.lm <- step(lm.y3)
 
 summary(final.lm)
@@ -344,6 +345,11 @@ summary(final.lm)
 
 predY <- predict(final.lm, tabla1 <- newnorm1[,c("Y", "X7", "X33", "X46", "X47", "X48")])
 
+# calculamos el error normalizado (NMSE)
+nmse1.y1.lm <- mean((predY - tabla1[,"Y"])^2) / 
+               mean((mean(tabla1[,"Y"]) - tabla1[,"Y"])^2)
+nmse1.y1.lm
+# [1] 0.39406
 
 # install.packages("hydroGOF")
 library(hydroGOF)
@@ -360,15 +366,55 @@ install.packages("e1071")
 library(e1071)
 
 # probaremos la regresión con 3 casos 
-  # (1) datos sin eliminación de outliers (49cols, 42obs)
+  # (1) datos sin outliers todas las columnas (49cols, 40obs)
   # (2) datos luego de aplicar boruta para la regresión lineal (11cols, 40obs)
   # (3) datos luego de aplicar backward elimination (6cols, 40obs)
 
 #(1)
-svm1 <- svm(Y~., norm)
+svm1 <- svm(Y~., newnorm1)
 svm1
-predictYsvm1 <- predict(svm1,norm)
-predictYsvm1
+# Number of Support Vectors:  35
+predictYsvm1 <- predict(svm1,newnorm1)
+
+# NMSE
+nmse2.svm1 <- mean((predictYsvm1 - newnorm1[,"Y"])^2) / 
+              mean((mean(newnorm1[,"Y"]) - newnorm1[,"Y"])^2)
+nmse2.svm1
+# [1] 0.188762
+
+# (2)
+svm2 <- svm(Y~.,newnorm1[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X46", "X47", "X48")])
+svm2
+# Number of Support Vectors:  36
+predictYsvm2 <- predict(svm2, newnorm1[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X46", "X47", "X48")])
+
+
+#NMSE
+nmse3.svm2 <- mean((predictYsvm2 - newnorm1[,"Y"])^2 / 
+              mean((mean(newnorm1[,"Y"]) - newnorm1[,"Y"])^2))
+nmse3.svm2
+# [1] 0.3081065
+
+#(3)
+svm3 <- svm(Y~., tabla1)
+svm3
+# Number of Support Vectors:  37
+predictYsvm3 <- predict(svm3, tabla1)
+
+# NMSE
+nmse4.svm3 <- mean((predictYsvm3 - tabla1[,"Y"])^2 /
+              mean((mean(tabla1[,"Y"]) - tabla1[,"Y"])^2))
+nmse4.svm3
+# [1] 0.3518555
+
+# comparamos los NMSE
+vals <- matrix(c(nmse1.y1.lm, nmse2.svm1, nmse3.svm2, nmse4.svm3),ncol=4,byrow=TRUE)
+colnames(vals) <- c("Reg. Lineal ", "SVR crudo ", "SVM 10 cols", "SVM 5 cols " )
+rownames <- c("NMSE")
+as.table(vals)
+#   Reg. Lineal  SVR crudo  SVM 10 cols SVM 5 cols 
+#A    0.3940600  0.1834826   0.3081065   0.3518555
+
 
 
 
