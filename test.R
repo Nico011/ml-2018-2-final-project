@@ -351,16 +351,11 @@ nmse1.y1.lm <- mean((predY - tabla1[,"Y"])^2) /
 nmse1.y1.lm
 # [1] 0.39406
 
-# install.packages("hydroGOF")
-library(hydroGOF)
-
-RMSE = rmse(predY, tabla1$Y)
-RMSE
-# [1] 0.1700546
 
 
-# Support Vector Regression----------------------------------------------------------------
+# Support Vector Regression ----------------------------------------------------------------
 # https://www.kdnuggets.com/2017/03/building-regression-models-support-vector-regression.html
+# https://rpubs.com/richkt/280840
 
 install.packages("e1071")
 library(e1071)
@@ -386,7 +381,7 @@ nmse2.svm1
 svm2 <- svm(Y~.,newnorm1[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X46", "X47", "X48")])
 svm2
 # Number of Support Vectors:  36
-predictYsvm2 <- predict(svm2, newnorm1[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X46", "X47", "X48")])
+predictYsvm2 <- predict(svm2, tabla3 <- newnorm1[,c("Y", "X1", "X7", "X10", "X19", "X27", "X31", "X33", "X46", "X47", "X48")])
 
 
 #NMSE
@@ -410,14 +405,110 @@ nmse4.svm3
 # comparamos los NMSE
 vals <- matrix(c(nmse1.y1.lm, nmse2.svm1, nmse3.svm2, nmse4.svm3),ncol=4,byrow=TRUE)
 colnames(vals) <- c("Reg. Lineal ", "SVR crudo ", "SVM 10 cols", "SVM 5 cols " )
-rownames <- c("NMSE")
+rownames(vals) <- c("NMSE")
 as.table(vals)
-#   Reg. Lineal  SVR crudo  SVM 10 cols SVM 5 cols 
-#A    0.3940600  0.1834826   0.3081065   0.3518555
+#      Reg. Lineal  SVR crudo  SVM 10 cols SVM 5 cols 
+#NMSE    0.3940600  0.1887620   0.3081065   0.3518555
 
 
+# Visualización de predicciones ----------------------------------
+# predY, predictYsvm1, predictYsvm1, predictYsvm2, predictYsvm3
+old.par <- par(mfrow = c(2,2))
+
+plot(predY, newnorm1[,"Y"], main = "Modelo Lineal", xlab = "Predicciones", ylab = "Valores reales")
+abline(0,1,lty=2)
+
+plot(predictYsvm1, newnorm1[,"Y"], main = "SVM 1", xlab = "Predicciones", ylab = "Valores reales")
+abline(0,1,lty=2)
+
+plot(predictYsvm2, newnorm1[,"Y"], main = "SVM 2", xlab = "Predicciones", ylab = "Valores reales")
+abline(0,1,lty=2)
+
+plot(predictYsvm3, newnorm1[,"Y"], main = "SVM 3", xlab = "Predicciones", ylab = "Valores reales")
+abline(0,1,lty=2)
+
+par(old.par)
 
 
+# Validación cruzada ------------------------------------------
+# 10-Fold CV
+
+# compararemos el nuestro modelo lineal final con el mejor SVR que nos resultó, el (1)
+cross.validation <- function(tabla1, newnorm1, n.folds = 10)
+{
+  n1 <- nrow(tabla1) # usado en modelo lineal
+  n2 <- nrow(newnorm1) # para svr 1
+  
+  idx1 <- sample(n1,n1)
+  idx2 <- sample(n2,n2)
+  
+  tabla1 <- tabla1[idx1,]
+  newnorm1 <- newnorm1[idx2,]
+  
+  n1.each.part <- as.integer(n1/n.folds)
+  n2.each.part <- as.integer(n2/n.folds)
+  
+  perf.lm <- vector()
+  perf.svr <- vector()
+  
+  for(i in 1:n.folds)
+  {
+    cat("Fold ", i, "\n")
+    out1.fold <- ((i-1) * n1.each.part + 1):(i * n1.each.part)
+    out2.fold <- ((i-1) * n2.each.part + 1):(i * n2.each.part)
+    
+    l.model <- lm(Y~., tabla1[-out1.fold,])
+    l.model <- step(l.model)
+    l.model.preds <- predict(l.model, tabla1[out1.fold,])
+    #l.model.preds <- ifelse(l.model.preds < 0, 0, l.model.preds)
+    
+    s.model <- svm(Y~., newnorm1[-out2.fold,])
+    s.model.preds <- predict(s.model, newnorm1)
+    
+    perf.lm[i] <- mean((l.model.preds - tabla1[out1.fold, "Y"])^2) / 
+                  mean((mean(tabla1[-out1.fold, "Y"]) - tabla1[out1.fold, "Y"])^2)
+    perf.svr[i] <- mean((s.model.preds - newnorm1[out2.fold, "Y"]) ^2) /
+                   mean((mean(newnorm1[-out2.fold, "Y"]) - newnorm1[out2.fold, "Y"])^2)
+  }
+  
+  list(lm=list(avg = mean(perf.lm), std = sd(perf.lm), fold.res = perf.lm),
+       svr = list(avg = mean(perf.svr), std = sd(perf.svr), fold.res = perf.svr))
+}
+
+cv10.res <- cross.validation(tabla1, newnorm1)
+
+cv10.res
+
+# t test------------------------
+t.test(cv10.res$lm$fold.res, cv10.res$svr$fold.res, paired = T)
+
+# según los resultados del t test, ninguno de los 2 métodos entrega una diferencia significativa para predecir,
+# por lo que podemos usar uno u otro
+
+# Predicción -----------------------------------
+# usaremos SVR
+
+# primero importamos los datos de prueba 
+pred <- read.delim2("B.promedios.txt", header = TRUE)
+pred <- na.omit(pred)
+
+# normalizamos 
+pred.norm <- as.data.frame(apply(pred, 2, function(pred) (pred - min(pred))/(max(pred)-min(pred))))
+
+# desordenamos el dataset
+pred.norm <- pred.norm[sample(nrow(pred.norm), replace = FALSE),]
+
+# modelo 
+model <- tune(svm, Y ~ ., kernel='linear', data = newnorm1,
+           ranges = list(epsilon = seq(0,1,0.1), cost = 1:10))
+
+model <- model$best.model
+
+# predicción
+preds <- predict(model, newdata = pred.norm[,])
+preds
+help(predict)
+summary(model)
 
 
 
